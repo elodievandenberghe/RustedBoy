@@ -12,7 +12,7 @@
     in {
        devShells.${system}.default = pkgs.mkShell {
          buildInputs = with pkgs; [
-            cargo rustc rustfmt rustPackages.clippy
+            cargo rustc rustfmt rustPackages.clippy rust-analyzer
           ];
        };
     };

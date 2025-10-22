@@ -1,36 +1,29 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Register {
-    A,
-    B,
-    C,
-    D,
-    E,
-    H,
-    L,
-    HL,
+struct FlagRegister {
+    zero: bool,
+    subtract: bool,
+    half_carry: bool,
+    carry: bool
 }
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Register16 {
-    BC,
-    DE,
-    HL,
-    SP,
-    AF,
+pub struct Registers {
+    a: u8,
+    b: u8,
+    c: u8,
+    d: u8,
+    e: u8,
+    f: u8,
+    h: u8,
+    l: u8,
 }
 
+impl Registers {
+    fn get_bc(&self) -> u16 {
+        (self.b as u16) << 8 | self.c as u16
+    }
 
-pub struct CPU {
-    pub a: Byte,
-    pub b: Byte,
-    pub c: Byte,
-    pub d: Byte,
-    pub e: Byte,
-    pub h: Byte,
-    pub l: Byte,
-    pub f: Byte,
-    pub s: Byte,
-    pub sp: Word,
-    pub pc: Word,
+    fn set_bc(&mut self, value: u16) {
+        self.b = ((value & 0xFF00) >> 8) as u8;
+        self.c = (value & 0xFF) as u8;
+    }
 }
