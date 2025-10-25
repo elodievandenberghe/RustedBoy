@@ -29,6 +29,11 @@ enum LoadByteTarget {
     L,
     HLI,
 }
+
+enum StackTarget {
+    BC,
+}
+
 enum LoadByteSource {
     A,
     B,
@@ -40,6 +45,7 @@ enum LoadByteSource {
     D8,
     HLI,
 }
+
 enum LoadType {
     Byte(LoadByteTarget, LoadByteSource),
 }
@@ -63,6 +69,10 @@ impl Registers {
     fn set_bc(&mut self, value: u16) {
         self.b = (value >> 8) as u8;
         self.c = (value & 0xFF) as u8;
+    }
+
+    fn get_hl(&self) -> u16 {
+        ((self.h as u16) << 8) | self.l as u16
     }
 }
 
@@ -104,6 +114,8 @@ enum Instruction {
     LD(LoadType),
     PUSH(StackTarget),
     POP(StackTarget),
+    CALL(JumpTest),
+    RET(JumpTest),
 }
 
 enum JumpTest {
@@ -125,6 +137,17 @@ enum ArithmeticTarget {
 }
 
 impl CPU {
+    fn read_next_byte(&mut self) -> u8 {
+        let byte = self.bus.read_byte(self.pc + 1);
+        byte
+    }
+
+    fn read_next_word(&mut self) -> u16 {
+        let lo = self.bus.read_byte(self.pc + 1) as u16;
+        let hi = self.bus.read_byte(self.pc + 2) as u16;
+        (hi << 8) | lo
+    }
+
     fn step(&mut self) {
         let mut instruction_byte = self.bus.read_byte(self.pc);
         let prefixed = instruction_byte == 0xCB;
@@ -165,34 +188,25 @@ impl CPU {
                         LoadByteSource::A => self.registers.a,
                         LoadByteSource::D8 => self.read_next_byte(),
                         LoadByteSource::HLI => self.bus.read_byte(self.registers.get_hl()),
-                        _ => {
-                            panic!("TODO: implement other sources")
-                        }
+                        _ => panic!("TODO: implement other sources"),
                     };
                     match target {
                         LoadByteTarget::A => self.registers.a = source_value,
                         LoadByteTarget::HLI => {
-                            self.bus.write_byte(self.registers.get_hl(), source_value)
+                            self.bus.write_byte(self.registers.get_hl(), source_value);
                         }
-                        _ => {
-                            panic!("TODO: implement other targets")
-                        }
+                        _ => panic!("TODO: implement other targets"),
                     };
                     match source {
                         LoadByteSource::D8 => self.pc.wrapping_add(2),
                         _ => self.pc.wrapping_add(1),
                     }
                 }
-                _ => {
-                    panic!("TODO: implement other load types")
-                }
+                _ => panic!("TODO: implement other load types"),
             },
             Instruction::PUSH(target) => {
                 let value = match target {
                     StackTarget::BC => self.registers.get_bc(),
-                    _ => {
-                        panic!("Support more targets")
-                    }
                 };
                 self.push(value);
                 self.pc.wrapping_add(1)
@@ -201,26 +215,32 @@ impl CPU {
                 let result = self.pop();
                 match target {
                     StackTarget::BC => self.registers.set_bc(result),
-                    _ => {
-                        panic!("TODO: support more targets")
-                    }
                 };
-                self.pc.wrapping_add(1);
+                self.pc.wrapping_add(1)
             }
-            Instruction::ADD(target) => {
-                match target {
-                    ArithmeticTarget::C => {
-                        let value = self.registers.c;
-                        let new_value = self.add(value);
-                        self.registers.a = new_value;
-                        self.pc.wrapping_add(1)
-                    }
-                    _ => {
-                        // TODO: implement other ADD targets
-                        self.pc.wrapping_add(1)
-                    }
+            Instruction::CALL(test) => {
+                let jump_condition = match test {
+                    JumpTest::NotZero => !self.registers.f.zero,
+                    _ => panic!("TODO: support more conditions"),
+                };
+                self.call(jump_condition)
+            }
+            Instruction::RET(test) => {
+                let jump_condition = match test {
+                    JumpTest::NotZero => !self.registers.f.zero,
+                    _ => panic!("TODO: support more conditions"),
+                };
+                self.return_(jump_condition)
+            }
+            Instruction::ADD(target) => match target {
+                ArithmeticTarget::C => {
+                    let value = self.registers.c;
+                    let new_value = self.add(value);
+                    self.registers.a = new_value;
+                    self.pc.wrapping_add(1)
                 }
-            }
+                _ => self.pc.wrapping_add(1),
+            },
         }
     }
 
@@ -250,8 +270,9 @@ impl CPU {
         self.bus.write_byte(self.sp, ((value & 0xFF00) >> 8) as u8);
 
         self.sp = self.sp.wrapping_sub(1);
-        self.bus.writing_byte(self.sp, value(value & 0xFF) as u8);
+        self.bus.write_byte(self.sp, (value & 0xFF) as u8);
     }
+
     fn pop(&mut self) -> u16 {
         let lsb = self.bus.read_byte(self.sp) as u16;
         self.sp = self.sp.wrapping_add(1);
@@ -260,6 +281,24 @@ impl CPU {
         self.sp = self.sp.wrapping_add(1);
 
         (msb << 8) | lsb
+    }
+
+    fn call(&mut self, should_jump: bool) -> u16 {
+        let next_pc = self.pc.wrapping_add(3);
+        if should_jump {
+            self.push(next_pc);
+            self.read_next_word()
+        } else {
+            next_pc
+        }
+    }
+
+    fn return_(&mut self, should_jump: bool) -> u16 {
+        if should_jump {
+            self.pop()
+        } else {
+            self.pc.wrapping_add(1)
+        }
     }
 }
 
@@ -274,11 +313,7 @@ impl Instruction {
 
     fn from_byte_prefixed(byte: u8) -> Option<Instruction> {
         match byte {
-            0x00 => {
-                // Example: RLC B (Rotate Left Circular)
-                // TODO: Add actual implementation when needed
-                None
-            }
+            0x00 => None, // TODO: Implement RLC B, etc.
             _ => None,
         }
     }
