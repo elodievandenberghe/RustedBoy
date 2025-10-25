@@ -1,3 +1,18 @@
+struct CPU {
+    registers: Registers,
+    pc: u16,
+    bus: MemoryBus,
+}
+struct MemoryBus {
+    memory: [u8; 0xFFFF],
+}
+
+impl MemoryBus {
+    fn read_bytes(&self, address: u16) -> u8 {
+        self.memory[address as usize]
+    }
+}
+
 pub struct Registers {
     a: u8,
     b: u8,
@@ -72,14 +87,37 @@ enum ArithmeticTarget {
 }
 
 impl CPU {
-    fn execute(&mut self, instruction: Instruction) {
+    fn step(&mut self) {
+        let mut instruction_byte = self.bus.read_byte(self.pc);
+        let prefixed = instruction_byte == 0xCB;
+
+        if prefixed {
+            instruction_byte = self.bus.read_byte(self.pc + 1);
+        }
+        let next_pc = if let Some(instruction) = Instruction::from_byte(instruction_byte, prefixed)
+        {
+            self.execute(instruction)
+        } else {
+            let description = format!(
+                "0x{}{:x}",
+                if prefixed { "cb" } else { "" },
+                instruction_byte
+            );
+            panic!("Unkown instruction found for: {}", description)
+        };
+
+        self.pc = next_pc;
+    }
+
+    fn execute(&mut self, instruction: Instruction) -> u16 {
         match instruction {
             Instruction::ADD(target) => {
                 match target {
                     ArithmeticTarget::C => {
                         let value = self.registers.c;
                         let new_value = self.add(value);
-                        self.registers.a = new_value
+                        self.registers.a = new_value;
+                        self.pc.wrapping_add(1)
                     }
                     _ => { /* TODO: support more targets */ }
                 }
@@ -95,5 +133,35 @@ impl CPU {
 
         self.registers.f.half_carry = (self.registers.a & 0xF) + (value & 0xF) > 0xF;
         new_value
+    }
+}
+
+impl Insruction {
+    fn from_byte(byte: u8, prefixed: bool) -> Option<Instruction> {
+        if prefixed {
+            Instruction::from_byte_prefixed(byte)
+        } else {
+            Instruction::from_byte_not_prefixed(byte)
+        }
+    }
+    fn from_byte_prefixed(byte: u8) -> Option<Instruction> {
+        match byte {
+            0x00 => Some(Instruction::RLC(PrefixTarget::B)),
+            _ =>
+            /* TODO: Add mapping for rest of instructions */
+            {
+                None
+            }
+        }
+    }
+    fn from_byte_not_prefixed(byte: u8) -> Option<Instruction> {
+        match byte {
+            0x02 => Some(Instruction::INC(IncDecTarget::BC)),
+            _ =>
+            /* TODO: Add mapping for rest of instructions */
+            {
+                None
+            }
+        }
     }
 }
