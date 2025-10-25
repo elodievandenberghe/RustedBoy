@@ -13,6 +13,18 @@ impl MemoryBus {
     }
 }
 
+enum JumpTest {
+    NotZero,
+    Zero,
+    NotCarry,
+    Carry,
+    Always,
+}
+
+enum Instruction {
+    JP(JumpTest),
+}
+
 pub struct Registers {
     a: u8,
     b: u8,
@@ -111,6 +123,16 @@ impl CPU {
 
     fn execute(&mut self, instruction: Instruction) -> u16 {
         match instruction {
+            Instruction::JP(test) => {
+                let jump_condition = match test {
+                    JumpTest::NotZero => !self.registers.f.zero,
+                    JumpTest::NotCarry => !self.registers.f.carry,
+                    JumpTest::Zero => self.registers.f.zero,
+                    JumpTest::Carry => self.registers.f.carry,
+                    JumpTest::Always => true,
+                };
+                self.jump(jump_condition)
+            }
             Instruction::ADD(target) => {
                 match target {
                     ArithmeticTarget::C => {
@@ -125,6 +147,17 @@ impl CPU {
             _ => { /* TODO: support more instructions */ }
         }
     }
+
+    fn ump(&self, should_jump: bool) -> u16 {
+        if should_jump {
+            let least_significant_byte = self.read_byte(self.pc + 1) as u16;
+            let most_significant_byte = self.bus.read_byte(self.pc + 2) as u16;
+            (most_significant_byte << 8) | least_significant_byte
+        } else {
+            self.pc.wrapping_add(3)
+        }
+    }
+
     fn add(&mut self, value: u8) -> u8 {
         let (new_value, did_overflow) = self.registers.a.overflowing_add(value);
         self.registers.f.zero = new_value == 0;
