@@ -102,6 +102,8 @@ enum Instruction {
     JP(JumpTest),
     ADD(ArithmeticTarget),
     LD(LoadType),
+    PUSH(StackTarget),
+    POP(StackTarget),
 }
 
 enum JumpTest {
@@ -195,6 +197,16 @@ impl CPU {
                 self.push(value);
                 self.pc.wrapping_add(1)
             }
+            Instruction::POP(target) => {
+                let result = self.pop();
+                match target {
+                    StackTarget::BC => self.registers.set_bc(result),
+                    _ => {
+                        panic!("TODO: support more targets")
+                    }
+                };
+                self.pc.wrapping_add(1);
+            }
             Instruction::ADD(target) => {
                 match target {
                     ArithmeticTarget::C => {
@@ -239,6 +251,15 @@ impl CPU {
 
         self.sp = self.sp.wrapping_sub(1);
         self.bus.writing_byte(self.sp, value(value & 0xFF) as u8);
+    }
+    fn pop(&mut self) -> u16 {
+        let lsb = self.bus.read_byte(self.sp) as u16;
+        self.sp = self.sp.wrapping_add(1);
+
+        let msb = self.bus.read_byte(self.sp) as u16;
+        self.sp = self.sp.wrapping_add(1);
+
+        (msb << 8) | lsb
     }
 }
 
