@@ -1,5 +1,1 @@
 /target
-flake.lock
-.direnv
-Cargo.lock
-.envrc
