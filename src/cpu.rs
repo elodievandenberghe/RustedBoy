@@ -2,19 +2,30 @@ use crate::memorybus::MemoryBus;
 use crate::register::Registers;
 pub struct Cpu {
     registers: Registers,
-    memorybus: MemoryBus,
+    bus: MemoryBus,
 }
 
 impl Cpu {
     pub fn new() -> Cpu {
         Cpu {
             registers: Registers::new(),
-            memorybus: MemoryBus::new(),
+            bus: MemoryBus::new(),
         }
     }
-    pub fn execute(opcode: u8) {
+    pub fn step(&mut self) {
+        let instruction_byte = self.bus.read_data(self.registers.pc);
+        self.registers.increment_pc();
+        self.execute(instruction_byte)
+    }
+
+    pub fn execute(&mut self, opcode: u8) {
         match opcode {
-            0x00 => { /* */ }
+            0x00 => self.registers.increment_pc(),
+            0x78 => self.registers.a = self.registers.b,
+            0x06 => self.registers.b = self.bus.read_data(self.registers.pc.wrapping_add(1)),
+            0x02 => self
+                .bus
+                .write_data(self.registers.get_bc(), self.registers.a),
             _ => {}
         }
     }
