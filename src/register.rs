@@ -72,8 +72,8 @@ impl Registers {
     pub fn set_flag(&mut self, flag: u8) {
         self.f = flag & 0x0F0;
     }
-    pub fn increment_pc(&mut self) {
-        self.pc = self.pc.wrapping_add(1);
+    pub fn increment_pc(&mut self, value: u16) {
+        self.pc = self.pc.wrapping_add(value);
     }
 }
 #[cfg(test)]

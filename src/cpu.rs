@@ -13,20 +13,33 @@ impl Cpu {
         }
     }
     pub fn step(&mut self) {
-        let instruction_byte = self.bus.read_data(self.registers.pc);
-        self.registers.increment_pc();
-        self.execute(instruction_byte)
+        let opcode = self.bus.read_data(self.registers.pc);
+        let cycles = self.execute(opcode);
+        self.registers.increment_pc(cycles);
     }
 
-    pub fn execute(&mut self, opcode: u8) {
+    pub fn execute(&mut self, opcode: u8) -> u16 {
         match opcode {
-            0x00 => self.registers.increment_pc(),
-            0x78 => self.registers.a = self.registers.b,
-            0x06 => self.registers.b = self.bus.read_data(self.registers.pc.wrapping_add(1)),
-            0x02 => self
-                .bus
-                .write_data(self.registers.get_bc(), self.registers.a),
-            _ => {}
+            0x00 => {
+                /*no operation :3*/
+                1
+            }
+            0x78 => {
+                self.registers.a = self.registers.b;
+                1
+            }
+            0x06 => {
+                self.registers.b = self.bus.read_data(self.registers.pc.wrapping_add(1));
+                2
+            }
+            0x02 => {
+                self.bus
+                    .write_data(self.registers.get_bc(), self.registers.a);
+                2
+            }
+            _ => {
+                panic!("unimplemented instruction")
+            }
         }
     }
 }
