@@ -44,6 +44,7 @@ mod tests {
     #[test]
     fn test_read_rom() {
         let mut bus = MemoryBus::new();
+
         bus.extract_rom(String::from("/home/elodie/Downloads/Tetris (World).gb"))
             .expect("file not found");
 

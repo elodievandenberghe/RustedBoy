@@ -1,4 +1,5 @@
 use crate::memorybus::MemoryBus;
+use crate::register::CpuFlags;
 use crate::register::Registers;
 pub struct Cpu {
     registers: Registers,
@@ -14,8 +15,26 @@ impl Cpu {
     }
     pub fn step(&mut self) {
         let opcode = self.bus.read_data(self.registers.pc);
-        let cycles = self.execute(opcode);
-        self.registers.increment_pc(cycles);
+        let bytes = self.execute(opcode);
+        self.registers.increment_pc(bytes);
+    }
+
+    fn alu_add(&mut self, value: u8) {
+        let c = if self.registers.get_flag(CpuFlags::C) == true {
+            1
+        } else {
+            0
+        };
+        let a = self.registers.a;
+        let r = a.wrapping_add(value).wrapping_add(c);
+        self.registers.set_flag(CpuFlags::Z, r == 0);
+        self.registers
+            .set_flag(CpuFlags::H, ((a & 0xF) + (value & 0xF) + c) > 0xF);
+        self.registers.set_flag(CpuFlags::N, false);
+        self.registers
+            .set_flag(CpuFlags::C, (a as u16) + (value as u16) + (c as u16) > 0xFF);
+
+        self.registers.a = r;
     }
 
     pub fn execute(&mut self, opcode: u8) -> u16 {
@@ -38,10 +57,37 @@ impl Cpu {
                 /* LD (BC), A - Store the value of register A into the memory address in BC */
                 self.bus
                     .write_data(self.registers.get_bc(), self.registers.a);
+                1
+            }
+            0x3E => {
+                /*LD A, d8, load 8-bit immediate value into a*/
+                self.registers.a = self.bus.read_data(self.registers.pc.wrapping_add(1));
                 2
             }
+            0x2E => {
+                /*LD A, d8, load 8-bit immediate value into l*/
+                self.registers.l = self.bus.read_data(self.registers.pc.wrapping_add(1));
+                2
+            }
+            0x1E => {
+                /*LD A, d8, load 8-bit immediate value into e*/
+                self.registers.e = self.bus.read_data(self.registers.pc.wrapping_add(1));
+                2
+            }
+            0x0E => {
+                /*LD A, d8, load 8-bit immediate value into c*/
+                self.registers.c = self.bus.read_data(self.registers.pc.wrapping_add(1));
+                2
+            }
+            0x80 => {
+                /*ADD A, B, Add contents of register B to contents of register A, store result in A*/
+                self.alu_add(self.registers.b);
+                1
+            }
             _ => {
-                panic!("unimplemented instruction");
+                panic!(
+                    "oh there's panic on the streets of london, panic on the streets of burningham"
+                );
             }
         }
     }
@@ -84,5 +130,39 @@ mod cpu_tests {
         cpu.bus.write_data(cpu.registers.pc, 0x02);
         cpu.step();
         assert_eq!(cpu.registers.a, cpu.bus.read_data(cpu.registers.get_bc()))
+    }
+    #[test]
+    fn test_add_b_to_a() {
+        let mut cpu = Cpu::new();
+        cpu.registers.a = 0x01;
+        cpu.registers.b = 0x42;
+        cpu.registers.f = 0x00;
+        cpu.bus.write_data(cpu.registers.pc, 0x80);
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0x01 + 0x42);
+        assert_eq!(cpu.registers.f, 0x0);
+    }
+    #[test]
+    fn test_add_b_to_a_hc_flag() {
+        let mut cpu = Cpu::new();
+        cpu.registers.a = 0xF;
+        cpu.registers.b = 0xF;
+        cpu.registers.f = 0x00;
+        cpu.bus.write_data(cpu.registers.pc, 0x80);
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0xF + 0xF);
+        assert_eq!(cpu.registers.f, CpuFlags::H as u8);
+    }
+    #[test]
+    fn test_add_b_to_a_c_flag() {
+        let mut cpu = Cpu::new();
+        cpu.registers.a = 0xFF;
+        cpu.registers.b = 0xFF;
+        cpu.registers.f = 0x00;
+        cpu.bus.write_data(cpu.registers.pc, 0x80);
+        cpu.step();
+        assert_eq!(cpu.registers.a, 0xFE);
+        assert_eq!(cpu.registers.get_flag(CpuFlags::C), true);
+        assert_eq!(cpu.registers.get_flag(CpuFlags::H), true);
     }
 }

@@ -1,6 +1,6 @@
 pub struct Registers {
     pub a: u8,
-    f: u8,
+    pub f: u8,
     pub b: u8,
     pub c: u8,
     pub d: u8,
@@ -69,8 +69,13 @@ impl Registers {
         let mask = flag as u8;
         self.f & mask > 0
     }
-    pub fn set_flag(&mut self, flag: u8) {
-        self.f = flag & 0x0F0;
+    pub fn set_flag(&mut self, flag: CpuFlags, set: bool) {
+        let mask = flag as u8;
+        if set {
+            self.f |= mask;
+        } else {
+            self.f &= !mask
+        }
     }
     pub fn increment_pc(&mut self, value: u16) {
         self.pc = self.pc.wrapping_add(value);
@@ -145,7 +150,23 @@ mod tests {
     #[test]
     fn test_set_flag() {
         let mut regs = Registers::new();
-        regs.set_flag(0xA0); // only bits 7-4 should be preserved
-        assert_eq!(regs.f, 0xA0 & 0xF0);
+
+        // Clear all flags first
+        regs.f = 0x00;
+
+        // Set Z and H flags
+        regs.set_flag(CpuFlags::Z, true);
+        regs.set_flag(CpuFlags::H, true);
+
+        // Check that only Z and H are set
+        assert!(regs.get_flag(CpuFlags::Z));
+        assert!(regs.get_flag(CpuFlags::H));
+        assert!(!regs.get_flag(CpuFlags::N));
+        assert!(!regs.get_flag(CpuFlags::C));
+
+        // Clear H flag
+        regs.set_flag(CpuFlags::H, false);
+        assert!(regs.get_flag(CpuFlags::Z));
+        assert!(!regs.get_flag(CpuFlags::H));
     }
 }
