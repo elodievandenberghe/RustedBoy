@@ -36,6 +36,21 @@ impl Cpu {
 
         self.registers.a = r;
     }
+    fn alu_sub(&mut self, value: u8) {
+        let c = if self.registers.get_flag(CpuFlags::C) == true {
+            1
+        } else {
+            0
+        };
+        let a = self.registers.a;
+        let r = a.wrapping_sub(value).wrapping_sub(c);
+        self.registers.set_flag(CpuFlags::Z, r == 0);
+        self.registers
+            .set_flag(CpuFlags::H, ((a & 0xF) < (value & 0xF) + c));
+        self.registers.set_flag(CpuFlags::N, true);
+        self.registers
+            .set_flag(CpuFlags::C, (a as u16) < (value as u16 & 0xF) + c as u16);
+    }
 
     pub fn execute(&mut self, opcode: u8) -> u16 {
         match opcode {
@@ -82,6 +97,83 @@ impl Cpu {
             0x80 => {
                 /*ADD A, B, Add contents of register B to contents of register A, store result in A*/
                 self.alu_add(self.registers.b);
+                1
+            }
+            0x81 => {
+                /*ADD A, C, Add contents of register B to contents of register A, store result in A*/
+                self.alu_add(self.registers.c);
+                1
+            }
+            0x82 => {
+                /*ADD A, D, Add contents of register B to contents of register A, store result in A*/
+                self.alu_add(self.registers.d);
+                1
+            }
+            0x83 => {
+                /*ADD A, E, Add contents of register B to contents of register A, store result in A*/
+                self.alu_add(self.registers.e);
+                1
+            }
+            0x84 => {
+                /* ADD A, H */
+                self.alu_add(self.registers.h);
+                1
+            }
+            0x85 => {
+                /* ADD A, L */
+                self.alu_add(self.registers.l);
+                1
+            }
+            0x86 => {
+                /* ADD A, (HL) */
+                let value = self.bus.read_data(self.registers.get_hl());
+                self.alu_add(value);
+                1
+            }
+            0x87 => {
+                /* ADD A, A */
+                self.alu_add(self.registers.a);
+                1
+            }
+            0x90 => {
+                /*SUB B*/
+                self.alu_sub(self.registers.b);
+                1
+            }
+            0x91 => {
+                // SUB C
+                self.alu_sub(self.registers.c);
+                1
+            }
+            0x92 => {
+                // SUB D
+                self.alu_sub(self.registers.d);
+                1
+            }
+            0x93 => {
+                // SUB E
+                self.alu_sub(self.registers.e);
+                1
+            }
+            0x94 => {
+                // SUB H
+                self.alu_sub(self.registers.h);
+                1
+            }
+            0x95 => {
+                // SUB L
+                self.alu_sub(self.registers.l);
+                1
+            }
+            0x96 => {
+                // SUB (HL)
+                let value = self.bus.read_data(self.registers.get_hl());
+                self.alu_sub(value);
+                2
+            }
+            0x97 => {
+                // SUB A
+                self.alu_sub(self.registers.a);
                 1
             }
             _ => {
