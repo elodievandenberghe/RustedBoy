@@ -69,6 +69,21 @@ impl Registers {
         let mask = flag as u8;
         self.f & mask > 0
     }
+
+    pub fn af(&self) -> u16 {
+        ((self.a as u16) << 8) | ((self.f & 0xF0) as u16)
+    }
+    pub fn bc(&self) -> u16 {
+        ((self.b as u16) << 8) | (self.c as u16)
+    }
+    pub fn de(&self) -> u16 {
+        ((self.d as u16) << 8) | (self.e as u16)
+    }
+
+    pub fn hl(&self) -> u16 {
+        ((self.h as u16) << 8) | (self.l as u16)
+    }
+
     pub fn set_flag(&mut self, flag: CpuFlags, set: bool) {
         let mask = flag as u8;
         if set {

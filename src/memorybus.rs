@@ -45,11 +45,10 @@ mod tests {
     fn test_read_rom() {
         let mut bus = MemoryBus::new();
 
-        bus.extract_rom(String::from("/home/elodie/Downloads/Tetris (World).gb"))
+        bus.extract_rom(String::from("Tetris (World).gb"))
             .expect("file not found");
 
-        let mut file = File::open(String::from("/home/elodie/Downloads/Tetris (World).gb"))
-            .expect("file not found");
+        let mut file = File::open(String::from("Tetris (World).gb")).expect("file not found");
 
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer)

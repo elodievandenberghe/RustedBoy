@@ -3,7 +3,7 @@ use crate::register::CpuFlags;
 use crate::register::Registers;
 pub struct Cpu {
     registers: Registers,
-    bus: MemoryBus,
+    pub bus: MemoryBus,
 }
 
 impl Cpu {
@@ -36,6 +36,18 @@ impl Cpu {
 
         self.registers.a = r;
     }
+
+    fn alu_add_16(&mut self, value: u16) {
+        let hl = self.registers.hl();
+        let r = self.registers.hl().wrapping_add(value);
+        self.registers
+            .set_flag(CpuFlags::H, ((hl & 0x0FFF) + (value & 0x0FFF)) > 0x0FFF);
+        self.registers.set_flag(CpuFlags::N, false);
+        self.registers
+            .set_flag(CpuFlags::C, (hl as u32) + (value as u32) > 0xFFFF);
+        self.registers.set_hl(r);
+    }
+
     fn alu_sub(&mut self, value: u8) {
         let c = if self.registers.get_flag(CpuFlags::C) == true {
             1
@@ -53,10 +65,107 @@ impl Cpu {
         self.registers.a = r;
     }
 
+    fn alu_rlc(&mut self) {
+        let result = self.registers.a.rotate_left(1);
+        self.registers
+            .set_flag(CpuFlags::C, self.registers.a & 0x80 == 0x80);
+        self.registers.set_flag(CpuFlags::Z, result == 0);
+        self.registers.set_flag(CpuFlags::H, false);
+        self.registers.set_flag(CpuFlags::N, false);
+        self.registers.a = result;
+    }
+
+    fn decrement_reg(&mut self, reg: u8) -> u8 {
+        let result = reg.wrapping_sub(1);
+        self.registers.set_flag(CpuFlags::Z, result == 0);
+        self.registers.set_flag(CpuFlags::H, (reg & 0x0F) == 0);
+        self.registers.set_flag(CpuFlags::N, true);
+        result
+    }
+    fn increment_reg(&mut self, reg: u8) -> u8 {
+        let result = reg.wrapping_add(1);
+        self.registers.set_flag(CpuFlags::Z, result == 0);
+        self.registers
+            .set_flag(CpuFlags::H, (reg & 0x0F) + 1 > 0x0F);
+        self.registers.set_flag(CpuFlags::N, true);
+        result
+    }
+
     pub fn execute(&mut self, opcode: u8) -> u16 {
         match opcode {
             0x00 => {
                 /*no operation :3*/
+                1
+            }
+            0x01 => {
+                /*LD BC, d16*/
+
+                let upper_nibble = self.bus.read_data(self.registers.pc.wrapping_add(2));
+                let lower_nibble = self.bus.read_data(self.registers.pc.wrapping_add(1));
+
+                self.registers
+                    .set_bc(((upper_nibble as u16) << 8) | (lower_nibble as u16));
+                3
+            }
+            0x03 => {
+                /*INC BC*/
+                self.registers
+                    .set_bc(self.registers.get_bc().wrapping_add(1));
+                1
+            }
+            0x04 => {
+                //INC B
+                self.registers.b = self.registers.b.wrapping_add(1);
+                1
+            }
+            0x05 => {
+                //DEC B
+                self.registers.b = self.registers.b.wrapping_sub(1);
+                1
+            }
+            0x07 => {
+                //RLCA
+                self.alu_rlc();
+                1
+            }
+            0x08 => {
+                //LD (n16), SP
+                let addr = (self.bus.read_data(self.registers.pc.wrapping_add(1)) as u16) << 8
+                    | (self.bus.read_data(self.registers.pc.wrapping_add(2)) as u16);
+                self.bus.write_data(addr, (self.registers.sp as u8) & 0xFF);
+                self.bus
+                    .write_data(addr.wrapping_add(1), (self.registers.sp as u8) >> 8);
+                3
+            }
+            0x09 => {
+                //ADD HL, BC
+                self.alu_add_16(self.registers.bc());
+                1
+            }
+            0x0A => {
+                //LD A, BC
+                self.registers.a = self.bus.read_data(self.registers.bc());
+                1
+            }
+            0x0B => {
+                //DEC BC
+                self.registers.set_bc(self.registers.bc().wrapping_sub(1));
+                1
+            }
+            0x0C => {
+                //INC C
+                self.registers.c = self.increment_reg(self.registers.c);
+                1
+            }
+            0x0D => {
+                //DEC C
+                self.registers.c = self.decrement_reg(self.registers.c);
+                1
+            }
+            0x02 => {
+                /* LD (BC), A - Store the value of register A into the memory address in BC */
+                self.bus
+                    .write_data(self.registers.get_bc(), self.registers.a);
                 1
             }
             0x78 => {
@@ -68,12 +177,6 @@ impl Cpu {
                 /* LD B, d8 - Load an immediate 8-bit value into register B */
                 self.registers.b = self.bus.read_data(self.registers.pc.wrapping_add(1));
                 2
-            }
-            0x02 => {
-                /* LD (BC), A - Store the value of register A into the memory address in BC */
-                self.bus
-                    .write_data(self.registers.get_bc(), self.registers.a);
-                1
             }
             0x3E => {
                 /*LD A, d8, load 8-bit immediate value into a*/
@@ -170,7 +273,7 @@ impl Cpu {
                 // SUB (HL)
                 let value = self.bus.read_data(self.registers.get_hl());
                 self.alu_sub(value);
-                2
+                1
             }
             0x97 => {
                 // SUB A
@@ -178,9 +281,7 @@ impl Cpu {
                 1
             }
             _ => {
-                panic!(
-                    "oh there's panic on the streets of london, panic on the streets of burningham"
-                );
+                panic!("Unimplemented instruction");
             }
         }
     }
