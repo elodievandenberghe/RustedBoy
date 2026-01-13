@@ -75,6 +75,16 @@ impl Cpu {
         self.registers.a = result;
     }
 
+    fn alu_rrc(&mut self) {
+        let result = self.registers.a.rotate_right(1);
+        self.registers
+            .set_flag(CpuFlags::C, self.registers.a & 0x1 == 0x1);
+        self.registers.set_flag(CpuFlags::Z, false);
+        self.registers.set_flag(CpuFlags::H, false);
+        self.registers.set_flag(CpuFlags::N, false);
+        self.registers.a = result;
+    }
+
     fn decrement_reg(&mut self, reg: u8) -> u8 {
         let result = reg.wrapping_sub(1);
         self.registers.set_flag(CpuFlags::Z, result == 0);
@@ -87,134 +97,169 @@ impl Cpu {
         self.registers.set_flag(CpuFlags::Z, result == 0);
         self.registers
             .set_flag(CpuFlags::H, (reg & 0x0F) + 1 > 0x0F);
-        self.registers.set_flag(CpuFlags::N, true);
+        self.registers.set_flag(CpuFlags::N, false);
         result
     }
 
     pub fn execute(&mut self, opcode: u8) -> u16 {
         match opcode {
             0x00 => {
-                /*no operation :3*/
+                /* NOP */
                 1
             }
             0x01 => {
-                /*LD BC, d16*/
-
-                let upper_nibble = self.bus.read_data(self.registers.pc.wrapping_add(2));
-                let lower_nibble = self.bus.read_data(self.registers.pc.wrapping_add(1));
-
+                /* LD BC, d16 */
+                let upper_byte = self.bus.read_data(self.registers.pc.wrapping_add(2));
+                let lower_byte = self.bus.read_data(self.registers.pc.wrapping_add(1));
                 self.registers
-                    .set_bc(((upper_nibble as u16) << 8) | (lower_nibble as u16));
+                    .set_bc(((upper_byte as u16) << 8) | (lower_byte as u16));
                 3
             }
+            0x02 => {
+                /* LD (BC), A */
+                self.bus
+                    .write_data(self.registers.get_bc(), self.registers.a);
+                1
+            }
             0x03 => {
-                /*INC BC*/
+                /* INC BC */
                 self.registers
                     .set_bc(self.registers.get_bc().wrapping_add(1));
                 1
             }
             0x04 => {
-                //INC B
+                /* INC B */
                 self.registers.b = self.registers.b.wrapping_add(1);
                 1
             }
             0x05 => {
-                //DEC B
+                /* DEC B */
                 self.registers.b = self.registers.b.wrapping_sub(1);
                 1
             }
+            0x06 => {
+                /* LD B, d8 */
+                self.registers.b = self.bus.read_data(self.registers.pc.wrapping_add(1));
+                2
+            }
             0x07 => {
-                //RLCA
+                /* RLCA */
                 self.alu_rlc();
                 1
             }
             0x08 => {
-                //LD (n16), SP
-                let addr = (self.bus.read_data(self.registers.pc.wrapping_add(1)) as u16) << 8
-                    | (self.bus.read_data(self.registers.pc.wrapping_add(2)) as u16);
-                self.bus.write_data(addr, (self.registers.sp as u8) & 0xFF);
+                /* LD (n16), SP */
+                let addr = (self.bus.read_data(self.registers.pc.wrapping_add(2)) as u16) << 8
+                    | (self.bus.read_data(self.registers.pc.wrapping_add(1)) as u16);
+                self.bus.write_data(addr, self.registers.sp as u8);
                 self.bus
-                    .write_data(addr.wrapping_add(1), (self.registers.sp as u8) >> 8);
+                    .write_data(addr.wrapping_add(1), (self.registers.sp >> 8) as u8);
                 3
             }
             0x09 => {
-                //ADD HL, BC
+                /* ADD HL, BC */
                 self.alu_add_16(self.registers.bc());
                 1
             }
             0x0A => {
-                //LD A, BC
+                /* LD A, (BC) */
                 self.registers.a = self.bus.read_data(self.registers.bc());
                 1
             }
             0x0B => {
-                //DEC BC
+                /* DEC BC */
                 self.registers.set_bc(self.registers.bc().wrapping_sub(1));
                 1
             }
             0x0C => {
-                //INC C
+                /* INC C */
                 self.registers.c = self.increment_reg(self.registers.c);
                 1
             }
             0x0D => {
-                //DEC C
+                /* DEC C */
                 self.registers.c = self.decrement_reg(self.registers.c);
                 1
             }
-            0x02 => {
-                /* LD (BC), A - Store the value of register A into the memory address in BC */
-                self.bus
-                    .write_data(self.registers.get_bc(), self.registers.a);
-                1
-            }
-            0x78 => {
-                /* LD A, B - Load the value of register B into register A */
-                self.registers.a = self.registers.b;
-                1
-            }
-            0x06 => {
-                /* LD B, d8 - Load an immediate 8-bit value into register B */
-                self.registers.b = self.bus.read_data(self.registers.pc.wrapping_add(1));
-                2
-            }
-            0x3E => {
-                /*LD A, d8, load 8-bit immediate value into a*/
-                self.registers.a = self.bus.read_data(self.registers.pc.wrapping_add(1));
-                2
-            }
-            0x2E => {
-                /*LD A, d8, load 8-bit immediate value into l*/
-                self.registers.l = self.bus.read_data(self.registers.pc.wrapping_add(1));
-                2
-            }
-            0x1E => {
-                /*LD A, d8, load 8-bit immediate value into e*/
-                self.registers.e = self.bus.read_data(self.registers.pc.wrapping_add(1));
-                2
-            }
             0x0E => {
-                /*LD A, d8, load 8-bit immediate value into c*/
+                /* LD C, d8 */
                 self.registers.c = self.bus.read_data(self.registers.pc.wrapping_add(1));
                 2
             }
+            0x0F => {
+                /* RRCA */
+                self.alu_rrc();
+                1
+            }
+            0x11 => {
+                //LD DE, d16
+                let value = (self.bus.read_data(self.registers.pc + 2) as u16) << 8
+                    | (self.bus.read_data(self.registers.pc + 1) as u16);
+                self.registers.set_de(value);
+                3
+            }
+            0x12 => {
+                //LD (DE), A
+                self.bus.write_data(self.registers.de(), self.registers.a);
+                1
+            }
+            0x13 => {
+                //INC DE
+                self.registers.set_de(self.registers.de().wrapping_add(1));
+                1
+            }
+            0x14 => {
+                //INC D
+                self.registers.d = self.increment_reg(self.registers.d);
+                1
+            }
+            0x15 => {
+                //DEC D
+                self.registers.d = self.decrement_reg(self.registers.d);
+                1
+            }
+            0x16 => {
+                //LD D, d8
+                self.registers.d = self.bus.read_data(self.registers.pc.wrapping_add(1));
+                2
+            }
+            0x1E => {
+                /* LD E, d8 */
+                self.registers.e = self.bus.read_data(self.registers.pc.wrapping_add(1));
+                2
+            }
+            0x2E => {
+                /* LD L, d8 */
+                self.registers.l = self.bus.read_data(self.registers.pc.wrapping_add(1));
+                2
+            }
+            0x3E => {
+                /* LD A, d8 */
+                self.registers.a = self.bus.read_data(self.registers.pc.wrapping_add(1));
+                2
+            }
+            0x78 => {
+                /* LD A, B */
+                self.registers.a = self.registers.b;
+                1
+            }
             0x80 => {
-                /*ADD A, B, Add contents of register B to contents of register A, store result in A*/
+                /* ADD A, B */
                 self.alu_add(self.registers.b);
                 1
             }
             0x81 => {
-                /*ADD A, C, Add contents of register B to contents of register A, store result in A*/
+                /* ADD A, C */
                 self.alu_add(self.registers.c);
                 1
             }
             0x82 => {
-                /*ADD A, D, Add contents of register B to contents of register A, store result in A*/
+                /* ADD A, D */
                 self.alu_add(self.registers.d);
                 1
             }
             0x83 => {
-                /*ADD A, E, Add contents of register B to contents of register A, store result in A*/
+                /* ADD A, E */
                 self.alu_add(self.registers.e);
                 1
             }
@@ -240,43 +285,43 @@ impl Cpu {
                 1
             }
             0x90 => {
-                /*SUB B*/
+                /* SUB B */
                 self.alu_sub(self.registers.b);
                 1
             }
             0x91 => {
-                // SUB C
+                /* SUB C */
                 self.alu_sub(self.registers.c);
                 1
             }
             0x92 => {
-                // SUB D
+                /* SUB D */
                 self.alu_sub(self.registers.d);
                 1
             }
             0x93 => {
-                // SUB E
+                /* SUB E */
                 self.alu_sub(self.registers.e);
                 1
             }
             0x94 => {
-                // SUB H
+                /* SUB H */
                 self.alu_sub(self.registers.h);
                 1
             }
             0x95 => {
-                // SUB L
+                /* SUB L */
                 self.alu_sub(self.registers.l);
                 1
             }
             0x96 => {
-                // SUB (HL)
+                /* SUB (HL) */
                 let value = self.bus.read_data(self.registers.get_hl());
                 self.alu_sub(value);
                 1
             }
             0x97 => {
-                // SUB A
+                /* SUB A */
                 self.alu_sub(self.registers.a);
                 1
             }

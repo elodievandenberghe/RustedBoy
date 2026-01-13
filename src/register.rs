@@ -112,7 +112,6 @@ mod tests {
         assert_eq!(regs.l, 0x4D);
         assert_eq!(regs.pc, 0x0100);
         assert_eq!(regs.sp, 0xFFFE);
-        // Flags should be all set initially (Z, N, H, C)
         assert_eq!(regs.f & 0xF0, 0xF0);
     }
 
