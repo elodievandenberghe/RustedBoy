@@ -1,3 +1,5 @@
+use serde::de::value;
+
 use crate::memorybus::MemoryBus;
 use crate::register::CpuFlags;
 use crate::register::Registers;
@@ -69,7 +71,7 @@ impl Cpu {
         let result = self.registers.a.rotate_left(1);
         self.registers
             .set_flag(CpuFlags::C, self.registers.a & 0x80 == 0x80);
-        self.registers.set_flag(CpuFlags::Z, result == 0);
+        self.registers.set_flag(CpuFlags::Z, false);
         self.registers.set_flag(CpuFlags::H, false);
         self.registers.set_flag(CpuFlags::N, false);
         self.registers.a = result;
@@ -83,6 +85,40 @@ impl Cpu {
         self.registers.set_flag(CpuFlags::H, false);
         self.registers.set_flag(CpuFlags::N, false);
         self.registers.a = result;
+    }
+
+    fn alu_rla(&mut self) {
+        let old_a = self.registers.a;
+        let carry = if self.registers.get_flag(CpuFlags::C) {
+            1
+        } else {
+            0
+        };
+        let new_carry = (old_a & 0x80) != 0;
+        let result = (old_a << 1) | carry;
+
+        self.registers.a = result;
+        self.registers.set_flag(CpuFlags::Z, false);
+        self.registers.set_flag(CpuFlags::N, false);
+        self.registers.set_flag(CpuFlags::H, false);
+        self.registers.set_flag(CpuFlags::C, new_carry);
+    }
+
+    fn alu_rra(&mut self) {
+        let old_a = self.registers.a;
+        let carry = if self.registers.get_flag(CpuFlags::C) {
+            1
+        } else {
+            0
+        };
+        let new_carry = (old_a & 0x01) != 0;
+        let result = carry | (old_a >> 1);
+
+        self.registers.a = result;
+        self.registers.set_flag(CpuFlags::Z, false);
+        self.registers.set_flag(CpuFlags::N, false);
+        self.registers.set_flag(CpuFlags::H, false);
+        self.registers.set_flag(CpuFlags::C, new_carry);
     }
 
     fn decrement_reg(&mut self, reg: u8) -> u8 {
@@ -99,6 +135,36 @@ impl Cpu {
             .set_flag(CpuFlags::H, (reg & 0x0F) + 1 > 0x0F);
         self.registers.set_flag(CpuFlags::N, false);
         result
+    }
+
+    fn alu_daa(&mut self) {
+        let old_value = self.registers.a;
+        let mut adjustment = 0;
+        let new_value;
+        if self.registers.get_flag(CpuFlags::N) {
+            if self.registers.get_flag(CpuFlags::H) {
+                adjustment += 6;
+            }
+            if self.registers.get_flag(CpuFlags::C) {
+                adjustment += 0x60;
+            }
+            new_value = old_value - adjustment;
+        } else {
+            if self.registers.get_flag(CpuFlags::H) || old_value & 0x0F > 0x09 {
+                adjustment += 0x06;
+            }
+            if self.registers.get_flag(CpuFlags::C) || old_value > 0x99 {
+                adjustment += 0x60;
+            }
+            new_value = old_value.wrapping_add(adjustment);
+        }
+        self.registers.a = new_value;
+        self.registers.set_flag(CpuFlags::Z, new_value == 0);
+        self.registers.set_flag(CpuFlags::H, false);
+        self.registers.set_flag(
+            CpuFlags::C,
+            self.registers.get_flag(CpuFlags::C) || adjustment >= 0x60,
+        );
     }
 
     pub fn execute(&mut self, opcode: u8) -> u16 {
@@ -223,10 +289,98 @@ impl Cpu {
                 self.registers.d = self.bus.read_data(self.registers.pc.wrapping_add(1));
                 2
             }
+            0x17 => {
+                //RLA
+                self.alu_rla();
+                1
+            }
+            0x18 => {
+                //JR s8
+                let value_to_jump = self.bus.read_data(self.registers.pc.wrapping_add(1)) as i8;
+                self.registers.pc =
+                    (self.registers.pc.wrapping_add(2)).wrapping_add_signed(value_to_jump as i16);
+                2
+            }
+            0x19 => {
+                //ADD HL, DE
+                self.alu_add_16(self.registers.get_de());
+                1
+            }
+            0x1A => {
+                self.registers.a = self.bus.read_data(self.registers.get_de());
+                1
+            }
+            0x1B => {
+                // DEC DE
+                self.registers
+                    .set_de(self.registers.get_de().wrapping_sub(1));
+                1
+            }
+            0x1C => {
+                // INC E
+                self.increment_reg(self.registers.e);
+                1
+            }
+            0x1D => {
+                // INC E
+                self.decrement_reg(self.registers.e);
+                1
+            }
             0x1E => {
                 /* LD E, d8 */
                 self.registers.e = self.bus.read_data(self.registers.pc.wrapping_add(1));
                 2
+            }
+            0x1F => {
+                //RRA
+                self.alu_rrc();
+                1
+            }
+            0x20 => {
+                //JR NZ, s8
+                if self.registers.get_flag(CpuFlags::Z) {
+                    let value_to_jump = self.bus.read_data(self.registers.pc.wrapping_add(1)) as i8;
+                    self.registers.pc = (self.registers.pc.wrapping_add(2))
+                        .wrapping_add_signed(value_to_jump as i16);
+                }
+                2
+            }
+            0x21 => {
+                let value = (self.bus.read_data(self.registers.pc + 2) as u16) << 8
+                    | (self.bus.read_data(self.registers.pc + 1) as u16);
+                self.registers.set_hl(value);
+                3
+            }
+            0x22 => {
+                //LD HL+ A
+                self.bus
+                    .write_data(self.registers.get_hl(), self.registers.a);
+                self.registers
+                    .set_hl(self.registers.get_hl().wrapping_add(1));
+                1
+            }
+            0x23 => {
+                self.registers
+                    .set_hl(self.registers.get_hl().wrapping_add(1));
+                1
+            }
+            0x24 => {
+                // INC H
+                self.registers.h = self.increment_reg(self.registers.h);
+                1
+            }
+            0x25 => {
+                // DEC H
+                self.registers.h = self.decrement_reg(self.registers.h);
+                1
+            }
+            0x26 => {
+                // LD, d8
+                self.registers.d = self.bus.read_data(self.registers.pc.wrapping_add(1));
+                2
+            }
+            0x27 => {
+                // DAA
             }
             0x2E => {
                 /* LD L, d8 */
