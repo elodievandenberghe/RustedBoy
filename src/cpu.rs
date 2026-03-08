@@ -612,10 +612,8 @@ impl Cpu {
             }
             0x3F => {
                 // CCF
-                self.registers.set_flag(
-                    self.registers.get_flag(CpuFlags::C),
-                    !self.registers.get_flag(CpuFlags::C),
-                );
+                self.registers
+                    .set_flag(CpuFlags::C, !self.registers.get_flag(CpuFlags::C));
                 1
             }
             0x40 => {
